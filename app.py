@@ -74,6 +74,7 @@ MEAL_SPLITS = {'Breakfast': 0.25, 'Lunch': 0.35, 'Dinner': 0.35, 'Snack': 0.05}
 
 # ---- Debug Collector ----
 debug_logs = []
+calc_summary = {}
 
 def search_usda_food(query):
     url = "https://api.nal.usda.gov/fdc/v1/foods/search"
@@ -194,6 +195,14 @@ MAIN_LIST = [
 tab_main, tab_debug = st.tabs(["Meal Analysis", "Debug"])
 
 with tab_main:
+    st.markdown(
+        """
+        <style>
+            .stApp {background-color: #F4F6FA;}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
     st.title("Genio Lunch Analyzer POC")
     col1, col2 = st.columns(2)
     with col1:
@@ -205,7 +214,8 @@ with tab_main:
         dishes = st.multiselect("Select Dishes from Menu", options=MENU_DISHES, default=[MENU_DISHES[0]])
 
     if st.button("Analyze Meal"):
-        bmi, z, median_bmi = get_bmi_zscore(age, height, weight)
+        with st.spinner("Calculating..."):
+            bmi, z, median_bmi = get_bmi_zscore(age, height, weight)
         st.markdown(f"**Your BMI:** {bmi:.2f} &nbsp;&nbsp;|&nbsp;&nbsp; **Median BMI for Age:** {median_bmi:.2f} &nbsp;&nbsp;|&nbsp;&nbsp; **BMI Z-score:** {z:.2f}")
         if z > 1.5:
             st.warning("⚠️  Your BMI-for-age is > 1.5 SD above the median. Please consult a healthcare provider.")
@@ -249,28 +259,42 @@ with tab_main:
                     if row["Nutrient"] not in filter_list:
                         continue
                     percent = float(row["% of RDA Met"].replace('%', ''))
-                    bar_val = min(percent / 100, 1.0)  # max out at 100%
-                    color = "#4caf50" if percent >= 100 else "#2196f3"
+                    bar_val = min(percent / 100, 1.0)
                     st.markdown(
                         f"**{row['Nutrient']}**: {row['Intake']}/{row['RDA (Meal)']} "
                         f"({percent:.1f}%)"
                     )
-                    st.markdown(
-                        f"""
-                        <div style="background: #e0e0e0; border-radius: 5px; height: 18px; width: 100%;">
-                          <div style="background: {color}; width: {bar_val*100:.1f}%; height: 18px; border-radius: 5px;"></div>
-                        </div>
-                        """, unsafe_allow_html=True
-                    )
+                    st.progress(bar_val)
 
         st.subheader("Meal Nutrient Coverage")
         show_progress_section("Macro Nutrients", MACRO_LIST)
         show_progress_section("Micro Nutrients", MICRO_LIST)
         show_progress_section("Main Fatty Acids & Others", MAIN_LIST)
 
+        calc_summary = {
+            "BMI": bmi,
+            "BMI z-score": z,
+            "Median BMI": median_bmi,
+            "User RDA": user_rda,
+            "Total Intake": total_nutrients,
+            "Comparison": comp_table,
+        }
+
     st.caption("POC: All values are approximate. For clinical advice, consult a professional.")
 
 with tab_debug:
+    st.header("Calculation Summary")
+    if calc_summary:
+        st.json(calc_summary)
+    else:
+        st.info("Run an analysis to view the summary")
+
+    st.header("Data Sources")
+    st.subheader("RDA Table")
+    st.dataframe(rda_df)
+    st.subheader("BMI LMS Table")
+    st.dataframe(lms_df)
+
     st.header("Debug Output")
     for log in debug_logs:
         st.write(f"---\nRequest Type: {log['type']}")
